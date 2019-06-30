@@ -1,0 +1,83 @@
+library(tidyverse)
+library(readxl)
+library(xlsx)
+library(data.table)
+library(reshape2)
+setwd("L:/06. Report/Marketing Calendar/Promo Plan per Marketplace")
+files <- list.files(path = "L:/06. Report/Marketing Calendar/Promo Plan per Marketplace", 
+                    pattern = "*.xlsx",
+                    full.names = TRUE)
+nfiles<-length(files)
+allresult<-list()
+for (z in 1:nfiles){
+    excel_sheets(files[z])
+    sheet=excel_sheets(files[z])
+    nsheets<-length(sheet)
+    resultlist<-list()
+    for (i in 1:nsheets) {
+        phase1=read_excel(files[z], sheet=sheet[i])
+        phase1<-phase1[-1,]
+        judul=colnames(phase1)
+        judul=tolower(judul)
+        judul=gsub(' ','',judul)
+        colnames(phase1)=judul
+        phase2=phase1[,names(phase1) %in% c("promo","startdate","enddate","date","sku","brand","nutrifoodname","marketplacename","diskon","stok","gudangtelcom/not")]
+        phase2 %>% filter(!is.na(promo)) %>% mutate_at(vars(startdate, enddate), as.Date, format = "%d/%m/%y") %>% unnest(date = map2(startdate, enddate, seq, by = "day")) %>% unnest() %>% group_by(promo,sku,startdate,enddate,nutrifoodname) %>% mutate(stock_day = stok/n()) %>% transform(files[z],store=sub(".xlsx", "", basename(files[z])))
+        phase3=phase2 %>% filter(!is.na(promo)) %>% mutate_at(vars(startdate, enddate), as.Date, format = "%d/%m/%y") %>% unnest(date = map2(startdate, enddate, seq, by = "day")) %>% unnest() %>% group_by(promo,sku,startdate,enddate,nutrifoodname) %>% mutate(stock_day = stok/n()) %>% transform(files[z],store=sub(".xlsx", "", basename(files[z])))
+        phase4=phase3[,names(phase3) %in% c("store","promo","startdate","enddate","date","sku","brand","nutrifoodname","marketplacename","diskon","stok","gudangtelcom.not","store","stock_day")]
+        resultlist[[i]]<-phase4
+    }
+    phase5<-do.call(rbind,resultlist)
+    allresult[[z]]<-phase5
+}
+finalmarcalx<-do.call(rbind,allresult)
+finalmarcalx$`stok`[which(is.na(finalmarcalx$diskon))]<-NA
+finalmarcalx$gudangtelcom.not <- sub("Y", "Yes", finalmarcalx$gudangtelcom.not)
+finalmarcalx$gudangtelcom.not <- sub("N", "No", finalmarcalx$gudangtelcom.not)
+finalmarcalx %>% filter(!grepl("Contoh", promo))
+finalmarcal=finalmarcalx %>% filter(!grepl("Contoh", promo))
+db<-"./Database/Master tata Nama SKU.xlsx"
+excel_sheets(db)
+sheetdb=excel_sheets(db)
+sheetdb=sheetdb[-2:-7]
+phase1db=read_excel(db, skip = 414)
+juduldb=colnames(phase1db)
+juduldb=tolower(juduldb)
+juduldb=gsub(' ','',juduldb)
+colnames(phase1db)=juduldb
+colnames(phase1db)[which(names(phase1db) == "skubundle")] <- "sku"
+finaldb=phase1db[,names(phase1db) %in% c("sku","produk1","skuproduk1","pcsproduk1","produk2","skuproduk2","pcsproduk2","produk3","skuproduk3","pcsproduk3","produk4","skuproduk4","pcsproduk4","produk5","skuproduk5","pcsproduk5")]
+finalwhx<-left_join(finalmarcal,finaldb,by=c("sku"="sku"))
+finalwh=finalwhx %>% mutate(subtot1 = stock_day*pcsproduk1) %>% mutate(subtot2 = stock_day*pcsproduk2) %>% mutate(subtot3 = stock_day*pcsproduk3) %>% mutate(subtot4 = stock_day*pcsproduk4) %>% mutate(subtot5 = stock_day*pcsproduk5)
+finalwh$skuproduk1 <- ifelse(is.na(finalwh$skuproduk1) | !nzchar(finalwh$skuproduk1), finalwh$sku, finalwh$skuproduk1)
+finalwh$produk1 <- ifelse(is.na(finalwh$produk1) | !nzchar(finalwh$produk1), finalwh$nutrifoodname, finalwh$produk1)
+finalwh$subtot1 <- ifelse(is.na(finalwh$subtot1) | !nzchar(finalwh$subtot1), finalwh$stock_day, finalwh$subtot1)
+produk1=finalwh[-2:-4]
+produk1=produk1[-3:-4]
+produk1=produk1[-12:-23]
+produk1=produk1[-13:-16]
+produk2=finalwh[-2:-4]
+produk2=produk2[-3:-4]
+produk2=produk2[-9:-11]
+produk2=produk2[-12:-21]
+produk2=produk2[-13:-16]
+produk3=finalwh[-2:-4]
+produk3=produk3[-3:-4]
+produk3=produk3[-9:-14]
+produk3=produk3[-12:-19]
+produk3=produk3[-13:-16]
+produk4=finalwh[-2:-4]
+produk4=produk4[-3:-4]
+produk4=produk4[-9:-17]
+produk4=produk4[-12:-17]
+produk4=produk4[-13:-16]
+produk5=finalwh[-2:-4]
+produk5=produk5[-3:-4]
+produk5=produk5[-9:-20]
+produk5=produk5[-12:-15]
+produk5=produk5[-13:-16]
+produklist<-list(produk1,produk2,produk3,produk4,produk5)
+finalewh<-rbindlist(produklist, use.names = F)
+datawh=finalewh %>% filter(!is.na(subtot1))
+write.xlsx(finalmarcal,file = "L:/06. Report/Marketing Calendar/Data Marketing Calendar.xlsx")
+write.xlsx(datawh,file = "L:/06. Report/Marketing Calendar/Data Request to Warehouse.xlsx")
